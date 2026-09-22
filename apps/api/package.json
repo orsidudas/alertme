@@ -6,11 +6,15 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "seed:admin": "tsx src/seed-admin.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.1.0",
     "better-sqlite3": "^12.4.1",
+    "bcryptjs": "^3.0.2",
     "fastify": "^5.6.1"
   },
   "devDependencies": {
