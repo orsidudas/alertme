@@ -1,0 +1,15 @@
+{
+  "name": "alertme",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev --workspace @alertme/api\" \"npm run dev --workspace @alertme/web\"",
+    "build": "npm run build --workspace @alertme/api && npm run build --workspace @alertme/web",
+    "typecheck": "npm run typecheck --workspace @alertme/api && npm run typecheck --workspace @alertme/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

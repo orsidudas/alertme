@@ -1,0 +1,75 @@
+:root {
+  font-family: Georgia, 'Times New Roman', serif;
+  color: #18332f;
+  background: #f5f1e8;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+main {
+  min-height: 100vh;
+  padding: 12rem max(2rem, 12vw);
+  background: radial-gradient(circle at 80% 20%, #d7e7d8 0, transparent 32rem), #f5f1e8;
+}
+
+.eyebrow {
+  margin: 0 0 1.5rem;
+  color: #b15c38;
+  font-family: ui-sans-serif, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1 {
+  max-width: 42rem;
+  margin: 0;
+  font-size: clamp(2.8rem, 7vw, 6rem);
+  line-height: 0.98;
+  font-weight: 500;
+}
+
+.description {
+  max-width: 34rem;
+  margin: 2rem 0;
+  color: #58706a;
+  font-family: ui-sans-serif, sans-serif;
+  font-size: 1.1rem;
+  line-height: 1.6;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid #bdd0c0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+  font-family: ui-sans-serif, sans-serif;
+  font-size: 0.9rem;
+}
+
+.indicator {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: #c9a34b;
+}
+
+.indicator.healthy {
+  background: #39805c;
+}
+
+.indicator.failed {
+  background: #b15c38;
+}
