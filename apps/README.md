@@ -438,7 +438,7 @@ The development process included:
 ### Documentation
 
 * [Product / architecture spike](docs/spike.md)
-* [Copilot prompt history](docs/prompts.md)
+* [Copilot prompt history](docs/prompt.md)
 
 The prompt history contains the prompts used during the development process, including the prompt that led to the initial one-time alert implementation and the subsequent correction to persistent alerts.
 
