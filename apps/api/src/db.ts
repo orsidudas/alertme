@@ -53,6 +53,17 @@ export function createDatabase(databasePath = process.env.DATABASE_PATH ?? './da
     CREATE INDEX IF NOT EXISTS news_items_category_id_idx ON news_items(category_id);
     CREATE INDEX IF NOT EXISTS news_items_published_at_idx ON news_items(published_at);
 
+    CREATE TABLE IF NOT EXISTS alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      category_id INTEGER NOT NULL REFERENCES categories(id),
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS alerts_user_id_idx ON alerts(user_id);
+    CREATE INDEX IF NOT EXISTS alerts_category_id_idx ON alerts(category_id);
+
     INSERT OR IGNORE INTO categories (name, slug) VALUES
       ('World', 'world'),
       ('Technology', 'technology'),

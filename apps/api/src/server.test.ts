@@ -297,3 +297,48 @@ test('keeps signups as USER and lets only admins change roles', async () => {
   });
   assert.equal(regularUser.statusCode, 403);
 });
+
+test('lets users create, view, toggle, and delete only their own alerts', async () => {
+  const firstSignup = await app.inject({
+    method: 'POST', url: '/api/auth/register',
+    payload: { email: 'first@example.com', password: 'password123' }
+  });
+  const secondSignup = await app.inject({
+    method: 'POST', url: '/api/auth/register',
+    payload: { email: 'second@example.com', password: 'password123' }
+  });
+  const firstCookie = firstSignup.headers['set-cookie'];
+  const secondCookie = secondSignup.headers['set-cookie'];
+
+  const created = await app.inject({
+    method: 'POST', url: '/api/alerts', headers: { cookie: firstCookie }, payload: { categoryId: 1 }
+  });
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.json().alert.enabled, 1);
+  const alertId = created.json().alert.id;
+
+  const firstAlerts = await app.inject({ method: 'GET', url: '/api/alerts', headers: { cookie: firstCookie } });
+  assert.equal(firstAlerts.statusCode, 200);
+  assert.equal(firstAlerts.json().alerts.length, 1);
+  assert.equal(firstAlerts.json().alerts[0].categoryName, 'World');
+
+  const secondAlerts = await app.inject({ method: 'GET', url: '/api/alerts', headers: { cookie: secondCookie } });
+  assert.equal(secondAlerts.statusCode, 200);
+  assert.equal(secondAlerts.json().alerts.length, 0);
+
+  const disabled = await app.inject({
+    method: 'PATCH', url: `/api/alerts/${alertId}`, headers: { cookie: firstCookie }, payload: { enabled: false }
+  });
+  assert.equal(disabled.statusCode, 200);
+  assert.equal(disabled.json().alert.enabled, 0);
+
+  const unauthorizedUpdate = await app.inject({
+    method: 'PATCH', url: `/api/alerts/${alertId}`, headers: { cookie: secondCookie }, payload: { enabled: true }
+  });
+  assert.equal(unauthorizedUpdate.statusCode, 404);
+
+  const deleted = await app.inject({ method: 'DELETE', url: `/api/alerts/${alertId}`, headers: { cookie: firstCookie } });
+  assert.equal(deleted.statusCode, 204);
+  const missing = await app.inject({ method: 'DELETE', url: `/api/alerts/${alertId}`, headers: { cookie: firstCookie } });
+  assert.equal(missing.statusCode, 404);
+});

@@ -13,7 +13,8 @@ type NewsItem = {
   categoryId: number;
   categoryName: string;
 };
-type Route = 'home' | 'news' | 'categories' | 'users';
+type Alert = { id: number; categoryId: number; categoryName: string; categorySlug: string; enabled: number; createdAt: string };
+type Route = 'home' | 'alerts' | 'news' | 'categories' | 'users';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, { credentials: 'include', ...options });
@@ -24,7 +25,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
 function currentRoute(): Route {
   const path = window.location.hash.replace('#/', '');
-  return path === 'news' || path === 'categories' || path === 'users' ? path : 'home';
+  return path === 'alerts' || path === 'news' || path === 'categories' || path === 'users' ? path : 'home';
 }
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
   const [route, setRoute] = useState<Route>(currentRoute);
   const [categories, setCategories] = useState<Category[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [adminNews, setAdminNews] = useState<NewsItem[]>([]);
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [email, setEmail] = useState('');
@@ -46,6 +48,7 @@ function App() {
   function navigate(nextRoute: Route) {
     window.location.hash = nextRoute === 'home' ? '/' : `/${nextRoute}`;
     setRoute(nextRoute);
+    setMessage('');
   }
 
   async function loadNews() {
@@ -67,8 +70,16 @@ function App() {
     setAdminUsers(response.users);
   }
 
+  async function loadAlerts() {
+    const response = await request<{ alerts: Alert[] }>('/api/alerts');
+    setAlerts(response.alerts);
+  }
+
   useEffect(() => {
-    const handleHashChange = () => setRoute(currentRoute());
+    const handleHashChange = () => {
+      setRoute(currentRoute());
+      setMessage('');
+    };
     window.addEventListener('hashchange', handleHashChange);
     loadNews().catch((error: unknown) => setMessage(error instanceof Error ? error.message : 'Unable to load news'));
     request<{ user: User }>('/api/auth/me').then((response) => setUser(response.user)).catch(() => undefined);
@@ -80,6 +91,7 @@ function App() {
       loadAdminNews().catch(() => undefined);
       loadAdminUsers().catch(() => undefined);
     }
+    if (user) loadAlerts().catch(() => undefined);
   }, [user]);
 
   async function handleLogin(event: FormEvent) {
@@ -191,6 +203,46 @@ function App() {
     }
   }
 
+  async function createAlert(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const formData = new FormData(event.currentTarget);
+    try {
+      await request('/api/alerts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryId: Number(formData.get('categoryId')) })
+      });
+      formElement.reset();
+      setMessage('Alert created.');
+      await loadAlerts();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to create alert');
+    }
+  }
+
+  async function toggleAlert(alert: Alert) {
+    try {
+      await request(`/api/alerts/${alert.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !alert.enabled })
+      });
+      await loadAlerts();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to update alert');
+    }
+  }
+
+  async function deleteAlert(id: number) {
+    if (!window.confirm('Delete this alert?')) return;
+    try {
+      await request(`/api/alerts/${id}`, { method: 'DELETE' });
+      setMessage('Alert deleted.');
+      await loadAlerts();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to delete alert');
+    }
+  }
+
   function renderNews() {
     return <section className="news-column">
       <div className="section-heading"><span>Latest stories</span><span>{news.length} items</span></div>
@@ -235,12 +287,24 @@ function App() {
     </section>;
   }
 
+  function renderAlerts() {
+    return <section className="management-page">
+      <div className="section-heading"><span>My alerts</span><span>{alerts.length} alerts</span></div>
+      <form className="panel management-form" onSubmit={createAlert}>
+        <p className="eyebrow">Category alert</p><h2>Create an alert</h2>
+        <label>Category<select name="categoryId" defaultValue="" required><option value="">Choose one</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+        <button type="submit">Create alert</button>
+      </form>
+      <div className="panel admin-list"><h2>Your alerts</h2>{alerts.length === 0 ? <p className="empty">You have not created any alerts yet.</p> : alerts.map((alert) => <div className="admin-row" key={alert.id}><span><strong>{alert.categoryName}</strong><small>{alert.enabled ? 'Enabled' : 'Disabled'}</small></span><span><button type="button" onClick={() => toggleAlert(alert)}>{alert.enabled ? 'Disable' : 'Enable'}</button><button type="button" className="danger-button" onClick={() => deleteAlert(alert.id)}>Delete</button></span></div>)}</div>
+    </section>;
+  }
+
   const isAdmin = user?.role === 'ADMIN';
-  const page = route === 'news' && isAdmin ? renderNewsManagement() : route === 'categories' && isAdmin ? renderCategoryManagement() : route === 'users' && isAdmin ? renderUserManagement() : renderNews();
+  const page = route === 'alerts' && user ? renderAlerts() : route === 'news' && isAdmin ? renderNewsManagement() : route === 'categories' && isAdmin ? renderCategoryManagement() : route === 'users' && isAdmin ? renderUserManagement() : renderNews();
 
   return <main>
     <header className="topbar"><div><p className="eyebrow">Alertme / News desk</p><h1>What is happening now.</h1></div>{user ? <button className="quiet-button" onClick={handleLogout}>Sign out</button> : null}</header>
-    {isAdmin ? <nav className="top-menu" aria-label="Admin menu"><button className={route === 'news' ? 'active' : ''} onClick={() => navigate('news')}>Manage news</button><button className={route === 'categories' ? 'active' : ''} onClick={() => navigate('categories')}>Manage category</button><button className={route === 'users' ? 'active' : ''} onClick={() => navigate('users')}>Manage Users</button><button className={route === 'home' ? 'active' : ''} onClick={() => navigate('home')}>Home</button></nav> : null}
+    {user ? <nav className="top-menu" aria-label="User menu"><button className={route === 'home' ? 'active' : ''} onClick={() => navigate('home')}>Home</button><button className={route === 'alerts' ? 'active' : ''} onClick={() => navigate('alerts')}>Alerts</button>{isAdmin ? <><button className={route === 'news' ? 'active' : ''} onClick={() => navigate('news')}>Manage news</button><button className={route === 'categories' ? 'active' : ''} onClick={() => navigate('categories')}>Manage category</button><button className={route === 'users' ? 'active' : ''} onClick={() => navigate('users')}>Manage Users</button></> : null}</nav> : null}
     {!user ? <div className="layout"><>{page}</><aside className="side-column"><form className="panel" onSubmit={authMode === 'login' ? handleLogin : handleSignup}><h2>{authMode === 'login' ? 'Sign in' : 'Create account'}</h2><label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /></label><button type="submit">{authMode === 'login' ? 'Sign in' : 'Sign up'}</button><button type="button" className="quiet-button auth-switch" onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setMessage(''); }}>{authMode === 'login' ? 'Need an account? Sign up' : 'Already registered? Sign in'}</button><p className="hint">New accounts start with the USER role.</p></form>{message ? <p className="message" aria-live="polite">{message}</p> : null}</aside></div> : <div className="layout">{page}<aside className="side-column">{route === 'home' ? <div className="panel"><p className="eyebrow">Signed in</p><h2>{user.email}</h2><p className="hint">Use the admin menu to manage the newsroom.</p></div> : null}{message ? <p className="message" aria-live="polite">{message}</p> : null}</aside></div>}
   </main>;
 }

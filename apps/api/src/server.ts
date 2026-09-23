@@ -19,6 +19,13 @@ const newsSelect = `
   FROM news_items JOIN categories ON categories.id = news_items.category_id
 `;
 
+const alertSelect = `
+  SELECT alerts.id, alerts.user_id AS userId, alerts.category_id AS categoryId,
+    alerts.enabled, alerts.created_at AS createdAt,
+    categories.name AS categoryName, categories.slug AS categorySlug
+  FROM alerts JOIN categories ON categories.id = alerts.category_id
+`;
+
 function slugify(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
@@ -111,6 +118,43 @@ export async function createApp(
     const news = database.prepare(`${newsSelect} WHERE news_items.id = ?`).get(Number(id));
     if (!news) return reply.code(404).send({ error: 'News item not found' });
     return { news };
+  });
+
+  app.get('/api/alerts', { preHandler: auth.requireUser }, async (request) => ({
+    alerts: database.prepare(`${alertSelect} WHERE alerts.user_id = ? ORDER BY alerts.created_at DESC, alerts.id DESC`).all(request.user!.id)
+  }));
+
+  app.post('/api/alerts', { preHandler: auth.requireUser }, async (request, reply) => {
+    const body = request.body as { categoryId?: unknown };
+    if (typeof body?.categoryId !== 'number' || !Number.isInteger(body.categoryId)) {
+      return reply.code(400).send({ error: 'Category is required' });
+    }
+    const category = database.prepare('SELECT id FROM categories WHERE id = ?').get(body.categoryId);
+    if (!category) return reply.code(400).send({ error: 'Category not found' });
+    const result = database.prepare(
+      'INSERT INTO alerts (user_id, category_id, enabled) VALUES (?, ?, 1)'
+    ).run(request.user!.id, body.categoryId);
+    return reply.code(201).send({
+      alert: database.prepare(`${alertSelect} WHERE alerts.id = ? AND alerts.user_id = ?`).get(result.lastInsertRowid, request.user!.id)
+    });
+  });
+
+  app.patch('/api/alerts/:id', { preHandler: auth.requireUser }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { enabled?: unknown };
+    if (typeof body?.enabled !== 'boolean') return reply.code(400).send({ error: 'Enabled must be a boolean' });
+    const result = database.prepare(
+      'UPDATE alerts SET enabled = ? WHERE id = ? AND user_id = ?'
+    ).run(body.enabled ? 1 : 0, Number(id), request.user!.id);
+    if (result.changes === 0) return reply.code(404).send({ error: 'Alert not found' });
+    return { alert: database.prepare(`${alertSelect} WHERE alerts.id = ? AND alerts.user_id = ?`).get(Number(id), request.user!.id) };
+  });
+
+  app.delete('/api/alerts/:id', { preHandler: auth.requireUser }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = database.prepare('DELETE FROM alerts WHERE id = ? AND user_id = ?').run(Number(id), request.user!.id);
+    if (result.changes === 0) return reply.code(404).send({ error: 'Alert not found' });
+    return reply.code(204).send();
   });
 
   app.post('/api/admin/news', { preHandler: auth.requireAdmin }, async (request, reply) => {
