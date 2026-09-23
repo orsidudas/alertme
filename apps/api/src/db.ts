@@ -30,7 +30,69 @@ export function createDatabase(databasePath = process.env.DATABASE_PATH ?? './da
     );
 
     CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      slug TEXT NOT NULL UNIQUE
+    );
+
+    CREATE TABLE IF NOT EXISTS news_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER NOT NULL REFERENCES categories(id),
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      content TEXT NOT NULL,
+      source_name TEXT,
+      source_url TEXT,
+      published_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_by_user_id INTEGER NOT NULL REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS news_items_category_id_idx ON news_items(category_id);
+    CREATE INDEX IF NOT EXISTS news_items_published_at_idx ON news_items(published_at);
+
+    INSERT OR IGNORE INTO categories (name, slug) VALUES
+      ('World', 'world'),
+      ('Technology', 'technology'),
+      ('Business', 'business'),
+      ('Science', 'science'),
+      ('Sports', 'sports');
   `);
+
+  const newsColumns = database.prepare('PRAGMA table_info(news_items)').all() as Array<{ name: string; notnull: number }>;
+  const sourceColumnsAreRequired = newsColumns.some((column) =>
+    (column.name === 'source_name' || column.name === 'source_url') && column.notnull === 1
+  );
+  if (sourceColumnsAreRequired) {
+    database.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      CREATE TABLE news_items_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category_id INTEGER NOT NULL REFERENCES categories(id),
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        content TEXT NOT NULL,
+        source_name TEXT,
+        source_url TEXT,
+        published_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_by_user_id INTEGER NOT NULL REFERENCES users(id)
+      );
+      INSERT INTO news_items_migrated
+        (id, category_id, title, summary, content, source_name, source_url, published_at, created_at, created_by_user_id)
+      SELECT id, category_id, title, summary, content, source_name, source_url, published_at, created_at, created_by_user_id
+      FROM news_items;
+      DROP TABLE news_items;
+      ALTER TABLE news_items_migrated RENAME TO news_items;
+      CREATE INDEX IF NOT EXISTS news_items_category_id_idx ON news_items(category_id);
+      CREATE INDEX IF NOT EXISTS news_items_published_at_idx ON news_items(published_at);
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
 
   return database;
 }
