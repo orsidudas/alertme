@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { matchAlerts } from './alert-matching.js';
 import { createDatabase } from './db.js';
-import type { EmailAdapter, EmailMessage } from './email.js';
+import { createEmailAdapterFromEnv, notifyAlertMatches, type EmailAdapter, type EmailMessage } from './email.js';
 import { createApp } from './server.js';
 
 let app: Awaited<ReturnType<typeof createApp>>;
@@ -14,6 +14,22 @@ class FakeEmailAdapter implements EmailAdapter {
     sentEmails.push(message);
   }
 }
+
+class FailingEmailAdapter implements EmailAdapter {
+  attempts: EmailMessage[] = [];
+
+  async send(message: EmailMessage): Promise<void> {
+    this.attempts.push(message);
+    if (this.attempts.length === 1) throw new Error('provider rejected message');
+  }
+}
+
+test('requires email provider configuration when creating the real adapter', () => {
+  assert.throws(
+    () => createEmailAdapterFromEnv({}),
+    /Email configuration missing: RESEND_API_KEY, EMAIL_FROM/
+  );
+});
 
 beforeEach(async () => {
   database = createDatabase(':memory:');
@@ -365,6 +381,36 @@ test('lets users create, view, toggle, and delete only their own alerts', async 
   assert.equal(missing.statusCode, 404);
 });
 
+test('admins can read alert owners, categories, and status but users cannot', async () => {
+  const userSignup = await app.inject({
+    method: 'POST', url: '/api/auth/register',
+    payload: { email: 'alert-owner@example.com', password: 'password123' }
+  });
+  const adminSignup = await app.inject({
+    method: 'POST', url: '/api/auth/register',
+    payload: { email: 'alert-admin@example.com', password: 'password123' }
+  });
+  database.prepare("UPDATE users SET role = 'ADMIN' WHERE id = ?").run(adminSignup.json().user.id);
+  await app.inject({
+    method: 'POST', url: '/api/alerts', headers: { cookie: userSignup.headers['set-cookie'] }, payload: { categoryId: 1 }
+  });
+  const adminLogin = await app.inject({
+    method: 'POST', url: '/api/auth/login',
+    payload: { email: 'alert-admin@example.com', password: 'password123' }
+  });
+
+  const visible = await app.inject({ method: 'GET', url: '/api/admin/alerts', headers: { cookie: adminLogin.headers['set-cookie'] } });
+  assert.equal(visible.statusCode, 200);
+  assert.deepEqual(visible.json().alerts.map((alert: { userEmail: string; categoryName: string; enabled: number }) => ({
+    userEmail: alert.userEmail,
+    categoryName: alert.categoryName,
+    enabled: alert.enabled
+  })), [{ userEmail: 'alert-owner@example.com', categoryName: 'World', enabled: 1 }]);
+
+  const denied = await app.inject({ method: 'GET', url: '/api/admin/alerts', headers: { cookie: userSignup.headers['set-cookie'] } });
+  assert.equal(denied.statusCode, 403);
+});
+
 test('matches enabled alerts by category for multiple news items and users', () => {
   const firstUser = database.prepare(
     "INSERT INTO users (email, password_hash) VALUES (?, 'test-hash')"
@@ -397,4 +443,32 @@ test('matches enabled alerts by category for multiple news items and users', () 
 
   const wrongCategoryAlert = database.prepare('SELECT enabled FROM alerts WHERE user_id = ? AND category_id = ?').get(firstUser, wrongCategory) as { enabled: number };
   assert.equal(wrongCategoryAlert.enabled, 1);
+});
+
+test('continues email attempts after a provider failure', async () => {
+  const firstUser = database.prepare("INSERT INTO users (email, password_hash) VALUES (?, 'test-hash')").run('failed@example.com').lastInsertRowid;
+  const secondUser = database.prepare("INSERT INTO users (email, password_hash) VALUES (?, 'delivered@example.com')").run('delivered@example.com').lastInsertRowid;
+  const firstAlert = database.prepare('INSERT INTO alerts (user_id, category_id) VALUES (?, 1)').run(firstUser).lastInsertRowid;
+  const secondAlert = database.prepare('INSERT INTO alerts (user_id, category_id) VALUES (?, 1)').run(secondUser).lastInsertRowid;
+  const adapter = new FailingEmailAdapter();
+  const originalError = console.error;
+  const errors: string[] = [];
+  console.error = (...args: unknown[]) => errors.push(args.join(' '));
+
+  try {
+    await notifyAlertMatches(database, [
+      { alertId: Number(firstAlert), userId: Number(firstUser), categoryId: 1 },
+      { alertId: Number(secondAlert), userId: Number(secondUser), categoryId: 1 }
+    ], {
+      title: 'Test story', summary: 'Summary', content: 'Content', categoryName: 'World',
+      publishedAt: new Date().toISOString(), sourceName: null, sourceUrl: null
+    }, adapter);
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(adapter.attempts.length, 2);
+  assert.equal(adapter.attempts[1].to, 'delivered@example.com');
+  assert.match(errors[0], /recipient=failed@example.com/);
+  assert.match(errors[0], /provider rejected message/);
 });

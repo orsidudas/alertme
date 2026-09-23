@@ -1,3 +1,8 @@
+import dotenv from 'dotenv';
+import { resolve } from 'node:path';
+
+dotenv.config({ path: resolve(process.cwd(), '.env') });
+
 import { createDatabase } from './db.js';
 import { createAuth } from './auth.js';
 

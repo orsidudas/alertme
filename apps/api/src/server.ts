@@ -1,3 +1,8 @@
+import dotenv from 'dotenv';
+import { resolve } from 'node:path';
+
+dotenv.config({ path: resolve(process.cwd(), '.env') });
+
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import Fastify, { type FastifyServerOptions } from 'fastify';
@@ -5,7 +10,7 @@ import type Database from 'better-sqlite3';
 import { createAuth } from './auth.js';
 import { matchAlerts } from './alert-matching.js';
 import { checkDatabase, database as defaultDatabase } from './db.js';
-import { DevelopmentEmailAdapter, notifyAlertMatches, type EmailAdapter } from './email.js';
+import { createEmailAdapterFromEnv, notifyAlertMatches, type EmailAdapter } from './email.js';
 
 type Credentials = { email?: unknown; password?: unknown };
 
@@ -42,7 +47,7 @@ function isNewsPayload(body: unknown): body is Record<string, unknown> {
 export async function createApp(
   database: Database.Database = defaultDatabase,
   options: FastifyServerOptions = { logger: true },
-  emailAdapter: EmailAdapter = new DevelopmentEmailAdapter()
+  emailAdapter: EmailAdapter = createEmailAdapterFromEnv()
 ) {
   const app = Fastify(options);
   const auth = createAuth(database);
@@ -107,6 +112,17 @@ export async function createApp(
     database.prepare('UPDATE users SET role = ? WHERE id = ?').run(body.role, Number(id));
     return { user: database.prepare('SELECT id, email, role, created_at AS createdAt FROM users WHERE id = ?').get(Number(id)) };
   });
+
+  app.get('/api/admin/alerts', { preHandler: auth.requireAdmin }, async () => ({
+    alerts: database.prepare(`
+      SELECT alerts.id, users.email AS userEmail, categories.name AS categoryName,
+        alerts.enabled, alerts.created_at AS createdAt
+      FROM alerts
+      JOIN users ON users.id = alerts.user_id
+      JOIN categories ON categories.id = alerts.category_id
+      ORDER BY users.email, categories.name
+    `).all()
+  }));
 
   app.get('/api/categories', async () => ({
     categories: database.prepare('SELECT id, name, slug FROM categories ORDER BY name').all()
@@ -312,11 +328,11 @@ export async function createApp(
 const port = Number(process.env.PORT ?? 3001);
 
 if (process.argv[1]?.endsWith('/server.ts') || process.argv[1]?.endsWith('/server.js')) {
-  const app = await createApp();
   try {
+    const app = await createApp();
     await app.listen({ port, host: '0.0.0.0' });
   } catch (error) {
-    app.log.error(error);
+    console.error(error instanceof Error ? error.message : error);
     process.exit(1);
   }
 }

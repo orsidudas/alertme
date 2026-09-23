@@ -38,6 +38,7 @@ button { border: 0; padding: .8rem 1.1rem; color: #f5f1e8; background: #18332f; 
 .admin-row button { padding: .45rem .6rem; margin-left: .35rem; font-size: .65rem; }
 .admin-row small { display: block; margin-top: .25rem; color: #58706a; font-size: .7rem; }
 .admin-row select { width: auto; padding: .45rem; font: .75rem ui-sans-serif, sans-serif; }
+.alert-status { color: #58706a; font: .75rem ui-sans-serif, sans-serif; text-transform: uppercase; letter-spacing: .05em; }
 .auth-switch { display: block; width: 100%; margin-top: .75rem; }
 .danger-button { color: #f5f1e8; background: #b15c38; }
 @media (max-width: 760px) { main { padding-top: 2.5rem; } .topbar { align-items: start; flex-direction: column; margin-bottom: 3rem; } .layout { grid-template-columns: 1fr; } }
