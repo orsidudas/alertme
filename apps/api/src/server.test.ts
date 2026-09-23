@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
+import { matchAlerts } from './alert-matching.js';
 import { createDatabase } from './db.js';
 import { createApp } from './server.js';
 
@@ -111,6 +112,7 @@ test('lists categories and lets an admin create news for a category', async () =
     payload: { email: 'admin@example.com', password: adminPassword }
   });
   assert.equal(login.statusCode, 200);
+  database.prepare('INSERT INTO alerts (user_id, category_id) VALUES (?, ?)').run(userId, technology.id);
   const create = await app.inject({
     method: 'POST',
     url: '/api/admin/news',
@@ -125,6 +127,8 @@ test('lists categories and lets an admin create news for a category', async () =
     }
   });
   assert.equal(create.statusCode, 201);
+  const standingAlert = database.prepare('SELECT enabled FROM alerts WHERE user_id = ? AND category_id = ?').get(userId, technology.id) as { enabled: number };
+  assert.equal(standingAlert.enabled, 1);
 
   const news = await app.inject({ method: 'GET', url: '/api/news' });
   assert.equal(news.statusCode, 200);
@@ -341,4 +345,38 @@ test('lets users create, view, toggle, and delete only their own alerts', async 
   assert.equal(deleted.statusCode, 204);
   const missing = await app.inject({ method: 'DELETE', url: `/api/alerts/${alertId}`, headers: { cookie: firstCookie } });
   assert.equal(missing.statusCode, 404);
+});
+
+test('matches enabled alerts by category for multiple news items and users', () => {
+  const firstUser = database.prepare(
+    "INSERT INTO users (email, password_hash) VALUES (?, 'test-hash')"
+  ).run('match-first@example.com').lastInsertRowid;
+  const secondUser = database.prepare(
+    "INSERT INTO users (email, password_hash) VALUES (?, 'test-hash')"
+  ).run('match-second@example.com').lastInsertRowid;
+  const matchingCategory = 1;
+  const wrongCategory = 2;
+
+  const firstAlert = database.prepare(
+    'INSERT INTO alerts (user_id, category_id, enabled) VALUES (?, ?, 1)'
+  ).run(firstUser, matchingCategory).lastInsertRowid;
+  const secondAlert = database.prepare(
+    'INSERT INTO alerts (user_id, category_id, enabled) VALUES (?, ?, 1)'
+  ).run(secondUser, matchingCategory).lastInsertRowid;
+  database.prepare(
+    'INSERT INTO alerts (user_id, category_id, enabled) VALUES (?, ?, 1)'
+  ).run(firstUser, wrongCategory);
+  database.prepare(
+    'INSERT INTO alerts (user_id, category_id, enabled) VALUES (?, ?, 0)'
+  ).run(secondUser, matchingCategory);
+
+  const matches = matchAlerts(database, matchingCategory);
+  assert.deepEqual(matches.map((match) => match.alertId).sort((a, b) => a - b), [Number(firstAlert), Number(secondAlert)]);
+  assert.deepEqual(matches.map((match) => match.userId).sort((a, b) => a - b), [Number(firstUser), Number(secondUser)]);
+  const secondMatches = matchAlerts(database, matchingCategory);
+  assert.deepEqual(secondMatches.map((match) => match.alertId).sort((a, b) => a - b), [Number(firstAlert), Number(secondAlert)]);
+  assert.deepEqual(secondMatches.map((match) => match.userId).sort((a, b) => a - b), [Number(firstUser), Number(secondUser)]);
+
+  const wrongCategoryAlert = database.prepare('SELECT enabled FROM alerts WHERE user_id = ? AND category_id = ?').get(firstUser, wrongCategory) as { enabled: number };
+  assert.equal(wrongCategoryAlert.enabled, 1);
 });

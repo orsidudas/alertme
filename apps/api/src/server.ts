@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import type Database from 'better-sqlite3';
 import { createAuth } from './auth.js';
+import { matchAlerts } from './alert-matching.js';
 import { checkDatabase, database as defaultDatabase } from './db.js';
 
 type Credentials = { email?: unknown; password?: unknown };
@@ -182,6 +183,7 @@ export async function createApp(
       request.user!.id
     );
     const news = database.prepare('SELECT * FROM news_items WHERE id = ?').get(result.lastInsertRowid);
+    matchAlerts(database, body.categoryId as number);
     return reply.code(201).send({ news });
   });
 

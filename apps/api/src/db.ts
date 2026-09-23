@@ -105,6 +105,29 @@ export function createDatabase(databasePath = process.env.DATABASE_PATH ?? './da
     `);
   }
 
+  const alertColumns = database.prepare('PRAGMA table_info(alerts)').all() as Array<{ name: string }>;
+  if (alertColumns.some((column) => column.name === 'triggered_at')) {
+    database.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      CREATE TABLE alerts_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        category_id INTEGER NOT NULL REFERENCES categories(id),
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO alerts_migrated (id, user_id, category_id, enabled, created_at)
+        SELECT id, user_id, category_id, enabled, created_at FROM alerts;
+      DROP TABLE alerts;
+      ALTER TABLE alerts_migrated RENAME TO alerts;
+      CREATE INDEX IF NOT EXISTS alerts_user_id_idx ON alerts(user_id);
+      CREATE INDEX IF NOT EXISTS alerts_category_id_idx ON alerts(category_id);
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
   return database;
 }
 
