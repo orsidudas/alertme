@@ -435,6 +435,10 @@ The development process included:
 9. Verifying the complete flow with a real email
 10. Documenting decisions, prompts, and evidence
 
+### Development guidance
+
+The repository includes `.github/copilot-instructions.md`, which contains the project-level engineering guidelines used to keep AI-assisted development focused on maintainability, incremental implementation, testing, and avoiding unnecessary scope.
+
 ### Documentation
 
 * [Product / architecture spike](docs/spike.md)
