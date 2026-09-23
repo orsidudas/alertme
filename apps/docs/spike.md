@@ -4,11 +4,6 @@
 
 Investigate work required to develop an alerting application.
 
-
-## Design:
-
-
-
 ## Purpose:
 
 We want users to be able to set up alerts so they get notified when
@@ -47,12 +42,11 @@ A clear roadmap for implementation.
 
 
 ## Tasks:
-
-### Create models (User, News, Alert, Category)
-### Create basic webpage, showing news
-### Create authentication
-### For Admin, make manage routes
-### Create email adapter
-### Add real email integration
-### Create slack adapter
-### Pull news by RSS
+- Create models (User, News, Alert, Category)
+- Create basic webpage, showing news
+- Create authentication
+- For Admin, make manage routes
+- Create email adapter
+- Add real email integration
+- Create slack adapter
+- Pull news by RSS
