@@ -2,14 +2,23 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { matchAlerts } from './alert-matching.js';
 import { createDatabase } from './db.js';
+import type { EmailAdapter, EmailMessage } from './email.js';
 import { createApp } from './server.js';
 
 let app: Awaited<ReturnType<typeof createApp>>;
 let database: ReturnType<typeof createDatabase>;
+let sentEmails: EmailMessage[];
+
+class FakeEmailAdapter implements EmailAdapter {
+  async send(message: EmailMessage): Promise<void> {
+    sentEmails.push(message);
+  }
+}
 
 beforeEach(async () => {
   database = createDatabase(':memory:');
-  app = await createApp(database, { logger: false });
+  sentEmails = [];
+  app = await createApp(database, { logger: false }, new FakeEmailAdapter());
 });
 
 afterEach(async () => {
@@ -127,6 +136,10 @@ test('lists categories and lets an admin create news for a category', async () =
     }
   });
   assert.equal(create.statusCode, 201);
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0].to, 'admin@example.com');
+  assert.match(sentEmails[0].subject, /new technology alert/i);
+  assert.match(sentEmails[0].text, /A new technology story/);
   const standingAlert = database.prepare('SELECT enabled FROM alerts WHERE user_id = ? AND category_id = ?').get(userId, technology.id) as { enabled: number };
   assert.equal(standingAlert.enabled, 1);
 
@@ -321,6 +334,11 @@ test('lets users create, view, toggle, and delete only their own alerts', async 
   assert.equal(created.json().alert.enabled, 1);
   const alertId = created.json().alert.id;
 
+  const duplicate = await app.inject({
+    method: 'POST', url: '/api/alerts', headers: { cookie: firstCookie }, payload: { categoryId: 1 }
+  });
+  assert.equal(duplicate.statusCode, 409);
+
   const firstAlerts = await app.inject({ method: 'GET', url: '/api/alerts', headers: { cookie: firstCookie } });
   assert.equal(firstAlerts.statusCode, 200);
   assert.equal(firstAlerts.json().alerts.length, 1);
@@ -368,7 +386,7 @@ test('matches enabled alerts by category for multiple news items and users', () 
   ).run(firstUser, wrongCategory);
   database.prepare(
     'INSERT INTO alerts (user_id, category_id, enabled) VALUES (?, ?, 0)'
-  ).run(secondUser, matchingCategory);
+  ).run(secondUser, wrongCategory);
 
   const matches = matchAlerts(database, matchingCategory);
   assert.deepEqual(matches.map((match) => match.alertId).sort((a, b) => a - b), [Number(firstAlert), Number(secondAlert)]);

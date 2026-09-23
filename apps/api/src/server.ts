@@ -5,6 +5,7 @@ import type Database from 'better-sqlite3';
 import { createAuth } from './auth.js';
 import { matchAlerts } from './alert-matching.js';
 import { checkDatabase, database as defaultDatabase } from './db.js';
+import { DevelopmentEmailAdapter, notifyAlertMatches, type EmailAdapter } from './email.js';
 
 type Credentials = { email?: unknown; password?: unknown };
 
@@ -40,7 +41,8 @@ function isNewsPayload(body: unknown): body is Record<string, unknown> {
 
 export async function createApp(
   database: Database.Database = defaultDatabase,
-  options: FastifyServerOptions = { logger: true }
+  options: FastifyServerOptions = { logger: true },
+  emailAdapter: EmailAdapter = new DevelopmentEmailAdapter()
 ) {
   const app = Fastify(options);
   const auth = createAuth(database);
@@ -132,9 +134,17 @@ export async function createApp(
     }
     const category = database.prepare('SELECT id FROM categories WHERE id = ?').get(body.categoryId);
     if (!category) return reply.code(400).send({ error: 'Category not found' });
-    const result = database.prepare(
-      'INSERT INTO alerts (user_id, category_id, enabled) VALUES (?, ?, 1)'
-    ).run(request.user!.id, body.categoryId);
+    let result;
+    try {
+      result = database.prepare(
+        'INSERT INTO alerts (user_id, category_id, enabled) VALUES (?, ?, 1)'
+      ).run(request.user!.id, body.categoryId);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('UNIQUE')) {
+        return reply.code(409).send({ error: 'You already have an alert for this category' });
+      }
+      throw error;
+    }
     return reply.code(201).send({
       alert: database.prepare(`${alertSelect} WHERE alerts.id = ? AND alerts.user_id = ?`).get(result.lastInsertRowid, request.user!.id)
     });
@@ -183,7 +193,23 @@ export async function createApp(
       request.user!.id
     );
     const news = database.prepare('SELECT * FROM news_items WHERE id = ?').get(result.lastInsertRowid);
-    matchAlerts(database, body.categoryId as number);
+    const notificationNews = database.prepare(`
+      SELECT news_items.title, news_items.summary, news_items.content,
+        news_items.published_at AS publishedAt, news_items.source_name AS sourceName,
+        news_items.source_url AS sourceUrl, categories.name AS categoryName
+      FROM news_items JOIN categories ON categories.id = news_items.category_id
+      WHERE news_items.id = ?
+    `).get(result.lastInsertRowid) as {
+      title: string;
+      summary: string;
+      content: string;
+      publishedAt: string;
+      sourceName: string | null;
+      sourceUrl: string | null;
+      categoryName: string;
+    };
+    const matches = matchAlerts(database, body.categoryId as number);
+    await notifyAlertMatches(database, matches, notificationNews, emailAdapter);
     return reply.code(201).send({ news });
   });
 

@@ -128,6 +128,14 @@ export function createDatabase(databasePath = process.env.DATABASE_PATH ?? './da
     `);
   }
 
+  database.exec(`
+    DELETE FROM alerts
+    WHERE id NOT IN (
+      SELECT MIN(id) FROM alerts GROUP BY user_id, category_id
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS alerts_user_category_unique_idx ON alerts(user_id, category_id);
+  `);
+
   return database;
 }
 

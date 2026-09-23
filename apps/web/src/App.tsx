@@ -292,7 +292,7 @@ function App() {
       <div className="section-heading"><span>My alerts</span><span>{alerts.length} alerts</span></div>
       <form className="panel management-form" onSubmit={createAlert}>
         <p className="eyebrow">Category alert</p><h2>Create an alert</h2>
-        <label>Category<select name="categoryId" defaultValue="" required><option value="">Choose one</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+        <label>Category<select name="categoryId" defaultValue="" required><option value="">Choose one</option>{categories.map((category) => { const alreadyAlerted = alerts.some((alert) => alert.categoryId === category.id); return <option key={category.id} value={category.id} disabled={alreadyAlerted}>{category.name}{alreadyAlerted ? ' (already added)' : ''}</option>; })}</select></label>
         <button type="submit">Create alert</button>
       </form>
       <div className="panel admin-list"><h2>Your alerts</h2>{alerts.length === 0 ? <p className="empty">You have not created any alerts yet.</p> : alerts.map((alert) => <div className="admin-row" key={alert.id}><span><strong>{alert.categoryName}</strong><small>{alert.enabled ? 'Enabled' : 'Disabled'}</small></span><span><button type="button" onClick={() => toggleAlert(alert)}>{alert.enabled ? 'Disable' : 'Enable'}</button><button type="button" className="danger-button" onClick={() => deleteAlert(alert.id)}>Delete</button></span></div>)}</div>
